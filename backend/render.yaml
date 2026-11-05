@@ -1,0 +1,29 @@
+# Despliegue de referencia para Render.
+# El disco persistente es obligatorio para no perder SQLite en cada despliegue.
+# Render ofrece discos persistentes en planes de pago; ajusta "plan" a tu cuenta.
+services:
+  - type: web
+    name: techservice-api
+    runtime: node
+    plan: starter
+    rootDir: backend
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DB_PATH
+        value: /var/data/techservice.sqlite
+      - key: APP_VERSION
+        value: 1.0.0
+      - key: LOG_REQUESTS
+        value: "true"
+      # Se configura en el panel de Render con la URL exacta del frontend.
+      - key: CORS_ORIGINS
+        sync: false
+    disk:
+      name: techservice-data
+      mountPath: /var/data
+      sizeGB: 1

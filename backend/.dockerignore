@@ -1,0 +1,10 @@
+node_modules
+data
+test
+test-data
+coverage
+.env
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+npm-debug.log*

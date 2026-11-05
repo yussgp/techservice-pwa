@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>TechService PWA · Gestión de servicios técnicos</title>
+    <meta
+      name="description"
+      content="TechService PWA: registro y gestión de reportes técnicos con funcionamiento offline y sincronización automática."
+    />
+    <meta name="theme-color" content="#17324D" />
+    <meta name="color-scheme" content="light" />
+
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png" />
+
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="TechService" />
+    <meta name="application-name" content="TechService" />
+    <meta name="format-detection" content="telephone=no" />
+  </head>
+  <body>
+    <div id="root">
+      <div class="boot-screen" aria-hidden="true">
+        <div class="boot-mark">TS</div>
+        <p>Cargando TechService…</p>
+      </div>
+    </div>
+    <noscript>
+      <p style="padding: 2rem; font-family: system-ui, sans-serif">
+        TechService necesita JavaScript para funcionar. Activa JavaScript en tu navegador.
+      </p>
+    </noscript>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
