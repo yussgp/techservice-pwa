@@ -16,11 +16,13 @@
 | Git | 2.x | Recomendado para publicar |
 | Docker | Opcional | Para probar la imagen del backend |
 
-`better-sqlite3` incluye binarios precompilados para las versiones soportadas. Si npm debe compilarlo:
+`@libsql/client` incluye binarios nativos precompilados para las plataformas habituales. Si npm debiera compilar `libsql`:
 
 - **Windows:** instalar Visual Studio Build Tools con la carga “Desktop development with C++”.
 - **Linux:** instalar `build-essential` y `python3`.
 - **macOS:** instalar Xcode Command Line Tools.
+
+En producción no hace falta compilar nada especial: Turso se accede por HTTPS.
 
 ---
 
@@ -48,7 +50,9 @@ Copiar desde `backend/.env.example`.
 | `NODE_ENV` | `development` | `production` activa HSTS y otros comportamientos. |
 | `PORT` | `4000` | Puerto HTTP. |
 | `HOST` | `0.0.0.0` | Interfaz de escucha. |
-| `DB_PATH` | `data/techservice.sqlite` | Ruta relativa a `backend/` o absoluta. |
+| `TURSO_DATABASE_URL` | vacío | URL de Turso (`libsql://...`). Si se define, tiene prioridad sobre `DB_PATH`. |
+| `TURSO_AUTH_TOKEN` | vacío | Token de Turso. Obligatorio junto con la URL remota. |
+| `DB_PATH` | `data/techservice.sqlite` | Ruta relativa a `backend/` o absoluta (solo SQLite local). |
 | `CORS_ORIGINS` | localhost 5173/4173 | Orígenes permitidos, separados por coma; `*` sólo en desarrollo. |
 | `LOG_REQUESTS` | `true` | Log de peticiones en consola. |
 | `APP_VERSION` | `1.0.0` | Versión mostrada por `/api/health`. |
@@ -59,6 +63,8 @@ Ejemplo:
 NODE_ENV=development
 PORT=4000
 HOST=0.0.0.0
+TURSO_DATABASE_URL=
+TURSO_AUTH_TOKEN=
 DB_PATH=data/techservice.sqlite
 CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173,http://127.0.0.1:4173
 LOG_REQUESTS=true
@@ -236,7 +242,7 @@ Requiere recargar dos veces y puede interferir con el HMR. Para la demostración
 
 El Service Worker exige contexto seguro. Opciones:
 
-1. **Desplegar** el frontend en Vercel/Netlify (HTTPS) y la API en Render.
+1. **Desplegar** el frontend en Vercel/Netlify (HTTPS) y la API en Render con Turso.
 2. **Túnel HTTPS** con ngrok:
 
    ```bash
@@ -281,9 +287,9 @@ El botón de Ajustes elimina los reportes locales, pero **no** los del servidor.
 
 ## 8. Solución de problemas
 
-### 8.1 `better-sqlite3` no instala
+### 8.1 `@libsql/client` no instala
 
-**Síntomas:** error de compilación `node-gyp`, `Python not found`, `MSBuild not found`.
+**Síntomas:** error de compilación `node-gyp`, `Python not found`, `MSBuild not found` al instalar `libsql`.
 
 **Solución:**
 
@@ -408,7 +414,8 @@ Antes de cada commit, revisar que `.env`, `data/` y `node_modules/` no estén en
 - [MDN — Service Worker API](https://developer.mozilla.org/es/docs/Web/API/Service_Worker_API)
 - [web.dev — PWA](https://web.dev/learn/pwa/)
 - [Express](https://expressjs.com/)
-- [better-sqlite3](https://github.com/WiseLibs/better-sqlite3)
+- [Turso — Documentación](https://docs.turso.tech/)
+- [libSQL Client](https://github.com/tursodatabase/libsql-client-ts)
 
 ---
 

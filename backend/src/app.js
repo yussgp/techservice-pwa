@@ -43,7 +43,7 @@ export function createApp({ db, corsOrigins = ['http://localhost:5173'], nodeEnv
   const app = express();
   const repo = createReportRepository(db);
   const service = createReportService({ db, repo });
-  const controller = createReportController({ service });
+  const controller = createReportController({ service, db });
 
   app.disable('x-powered-by');
   app.set('trust proxy', 1);

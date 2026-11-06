@@ -2,7 +2,16 @@ import { config } from './config.js';
 import { createDatabase } from './database/database.js';
 import { createApp } from './app.js';
 
-const db = createDatabase(config.dbPath);
+if (config.tursoDatabaseUrl && !config.tursoAuthToken) {
+  console.error('Falta TURSO_AUTH_TOKEN: la URL de Turso está definida pero el token no.');
+  process.exit(1);
+}
+
+const db = await createDatabase({
+  url: config.databaseUrl,
+  authToken: config.tursoAuthToken
+});
+
 const app = createApp({
   db,
   corsOrigins: config.corsOrigins,
@@ -15,7 +24,9 @@ const server = app.listen(config.port, config.host, () => {
   console.log(`  Entorno:    ${config.nodeEnv}`);
   console.log(`  Escuchando: http://localhost:${config.port}`);
   console.log(`  Health:     http://localhost:${config.port}/api/health`);
-  console.log(`  SQLite:     ${config.dbPath}`);
+  console.log(
+    `  Base:       ${config.databaseMode === 'turso' ? 'Turso (libSQL remoto)' : config.dbPath}`
+  );
   console.log(`  CORS:       ${Array.isArray(config.corsOrigins) ? config.corsOrigins.join(', ') : config.corsOrigins}`);
   console.log('');
 });
@@ -31,8 +42,12 @@ server.on('error', (error) => {
 
 function shutdown(signal) {
   console.log(`\n${signal} recibido. Cerrando servidor...`);
-  server.close(() => {
-    db.close();
+  server.close(async () => {
+    try {
+      await db.close();
+    } catch (error) {
+      console.error('No se pudo cerrar la base de datos:', error.message);
+    }
     console.log('Servidor y base de datos cerrados.');
     process.exit(0);
   });

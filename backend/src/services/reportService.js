@@ -28,23 +28,25 @@ function randomFolioCode(length = 4) {
 /**
  * Servicio con la lógica de negocio de reportes: validación, idempotencia,
  * generación de folios y sincronización por lotes.
+ *
+ * Todos los métodos son asíncronos porque libSQL puede vivir en Turso (remoto).
  */
 export function createReportService({ db, repo }) {
   const now = () => new Date().toISOString();
 
-  function generateFolio() {
+  async function generateFolio() {
     for (let attempt = 0; attempt < 10; attempt += 1) {
       const folio = `TS-${localDateStamp()}-${randomFolioCode(4)}`;
-      if (!repo.findByFolio(folio)) return folio;
+      if (!(await repo.findByFolio(folio))) return folio;
     }
     throw new ApiError(500, 'FOLIO_GENERATION_FAILED', 'No fue posible generar un folio único.');
   }
 
-  function list(query) {
+  async function list(query) {
     const limit = Math.min(Math.max(Number.parseInt(query.limit ?? '100', 10) || 100, 1), 500);
     const offset = Math.max(Number.parseInt(query.offset ?? '0', 10) || 0, 0);
     const search = typeof query.search === 'string' ? query.search.trim().slice(0, 100) : '';
-    const result = repo.list({
+    const result = await repo.list({
       search: search || undefined,
       serviceType: query.serviceType || undefined,
       priority: query.priority || undefined,
@@ -55,35 +57,35 @@ export function createReportService({ db, repo }) {
     return { ...result, limit, offset };
   }
 
-  function getById(id) {
+  async function getById(id) {
     if (!isUuid(id)) {
       throw new ApiError(400, 'INVALID_ID', 'El identificador debe ser un UUID válido.');
     }
-    const report = repo.findById(id);
+    const report = await repo.findById(id);
     if (!report) {
       throw new ApiError(404, 'REPORT_NOT_FOUND', 'El reporte solicitado no existe.');
     }
     return report;
   }
 
-  function create(body) {
+  async function create(body) {
     const { value, errors } = sanitizeReport(body, { partial: false });
     if (errors.length > 0) {
       throw new ApiError(422, 'VALIDATION_ERROR', 'Los datos del reporte no son válidos.', errors);
     }
 
     value.id = value.id || crypto.randomUUID();
-    value.folio = value.folio || generateFolio();
+    value.folio = value.folio || (await generateFolio());
     value.createdAt = value.createdAt || now();
     value.updatedAt = value.updatedAt || value.createdAt;
 
     // Idempotencia: el mismo UUID no crea un segundo registro.
-    const existing = repo.findById(value.id);
+    const existing = await repo.findById(value.id);
     if (existing) {
       return { report: existing, created: false, duplicate: true };
     }
 
-    if (repo.findByFolio(value.folio)) {
+    if (await repo.findByFolio(value.folio)) {
       throw new ApiError(
         409,
         'FOLIO_CONFLICT',
@@ -91,12 +93,12 @@ export function createReportService({ db, repo }) {
       );
     }
 
-    const report = repo.insert(value);
+    const report = await repo.insert(value);
     return { report, created: true, duplicate: false };
   }
 
-  function update(id, body) {
-    const existing = getById(id);
+  async function update(id, body) {
+    const existing = await getById(id);
     const { value, errors } = sanitizeReport(body, { partial: true });
     if (errors.length > 0) {
       throw new ApiError(422, 'VALIDATION_ERROR', 'Los datos del reporte no son válidos.', errors);
@@ -137,9 +139,9 @@ export function createReportService({ db, repo }) {
     return repo.update(validated.value);
   }
 
-  function remove(id) {
-    getById(id);
-    repo.remove(id);
+  async function remove(id) {
+    await getById(id);
+    await repo.remove(id);
     return { id, deleted: true };
   }
 
@@ -147,7 +149,7 @@ export function createReportService({ db, repo }) {
    * Sincroniza un lote de reportes de forma atómica y idempotente.
    * Cada item se procesa por separado para devolver un resultado detallado.
    */
-  function sync(reports) {
+  async function sync(reports) {
     if (!Array.isArray(reports) || reports.length === 0) {
       throw new ApiError(
         400,
@@ -164,8 +166,9 @@ export function createReportService({ db, repo }) {
     }
 
     const results = [];
+    const tx = await db.transaction('write');
 
-    const run = db.transaction(() => {
+    try {
       for (const raw of reports) {
         const { value, errors } = sanitizeReport(raw, {
           partial: false,
@@ -186,7 +189,7 @@ export function createReportService({ db, repo }) {
           continue;
         }
 
-        const existing = repo.findById(value.id);
+        const existing = await repo.findById(value.id, tx);
 
         if (existing) {
           const incomingUpdatedAt = value.updatedAt ? new Date(value.updatedAt) : null;
@@ -211,7 +214,7 @@ export function createReportService({ db, repo }) {
             createdAt: existing.createdAt,
             updatedAt: value.updatedAt
           };
-          const saved = repo.update(merged);
+          const saved = await repo.update(merged, tx);
           results.push({
             id: saved.id,
             folio: saved.folio,
@@ -221,7 +224,7 @@ export function createReportService({ db, repo }) {
           continue;
         }
 
-        const folioOwner = repo.findByFolio(value.folio);
+        const folioOwner = await repo.findByFolio(value.folio, tx);
         if (folioOwner) {
           results.push({
             id: value.id,
@@ -237,7 +240,7 @@ export function createReportService({ db, repo }) {
 
         value.createdAt = value.createdAt || now();
         value.updatedAt = value.updatedAt || value.createdAt;
-        const saved = repo.insert(value);
+        const saved = await repo.insert(value, tx);
         results.push({
           id: saved.id,
           folio: saved.folio,
@@ -245,9 +248,16 @@ export function createReportService({ db, repo }) {
           serverUpdatedAt: saved.serverUpdatedAt
         });
       }
-    });
 
-    run();
+      await tx.commit();
+    } catch (error) {
+      try {
+        await tx.rollback();
+      } catch {
+        // Si la transacción ya se cerró, el error original es el relevante.
+      }
+      throw error;
+    }
 
     const summary = {
       received: reports.length,

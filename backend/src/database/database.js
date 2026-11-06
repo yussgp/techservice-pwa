@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import Database from 'better-sqlite3';
+import { fileURLToPath } from 'node:url';
+import { createClient } from '@libsql/client';
 
 const MIGRATIONS = [
   {
@@ -38,30 +39,63 @@ const MIGRATIONS = [
   }
 ];
 
+function isLocalUrl(url) {
+  return url === ':memory:' || url.startsWith('file:');
+}
+
 /**
- * Abre (o crea) la base SQLite, asegura el directorio y aplica migraciones.
- * La ruta se inyecta para poder probar con bases temporales.
+ * Crea el cliente libSQL y aplica las migraciones pendientes.
+ *
+ * - Producción: URL remota de Turso (`libsql://...` o `https://...`) + token.
+ * - Desarrollo/pruebas: archivo local (`file:///...`) o `:memory:`.
+ *
+ * Las migraciones se registran en `schema_migrations`, portable entre SQLite
+ * local y Turso (no depende de `PRAGMA user_version`).
  */
-export function createDatabase(dbPath) {
-  if (dbPath !== ':memory:') {
-    fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+export async function createDatabase({ url, authToken } = {}) {
+  if (!url) {
+    throw new Error('createDatabase requiere la URL de la base de datos.');
   }
 
-  const db = new Database(dbPath);
-  db.pragma('journal_mode = WAL');
-  db.pragma('foreign_keys = ON');
-  db.pragma('busy_timeout = 5000');
+  if (url.startsWith('file:')) {
+    const filePath = fileURLToPath(url);
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  }
 
-  const currentVersion = db.pragma('user_version', { simple: true });
+  const client = createClient({
+    url,
+    authToken: authToken || undefined
+  });
+
+  if (isLocalUrl(url) && url !== ':memory:') {
+    // WAL y claves foráneas solo tienen sentido en el archivo local.
+    await client.execute('PRAGMA journal_mode = WAL');
+    await client.execute('PRAGMA foreign_keys = ON');
+  }
+
+  await migrate(client);
+
+  return client;
+}
+
+async function migrate(client) {
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+      version INTEGER PRIMARY KEY,
+      applied_at TEXT NOT NULL
+    )
+  `);
+
+  const applied = await client.execute('SELECT version FROM schema_migrations');
+  const appliedVersions = new Set(applied.rows.map((row) => Number(row.version)));
+
   for (const migration of MIGRATIONS) {
-    if (migration.version > currentVersion) {
-      const apply = db.transaction(() => {
-        db.exec(migration.sql);
-        db.pragma(`user_version = ${migration.version}`);
-      });
-      apply();
-    }
-  }
+    if (appliedVersions.has(migration.version)) continue;
 
-  return db;
+    await client.executeMultiple(migration.sql);
+    await client.execute({
+      sql: 'INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (?, ?)',
+      args: [migration.version, new Date().toISOString()]
+    });
+  }
 }

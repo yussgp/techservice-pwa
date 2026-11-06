@@ -17,7 +17,7 @@ La solución se compone de:
 - Una **capa de persistencia local** en IndexedDB mediante Dexie.
 - Un **Service Worker propio** que cachea el app shell y los assets.
 - Una **API REST** en Express con validación y reglas de idempotencia.
-- Una **base de datos SQLite** persistente en el servidor.
+- Una **base de datos SQLite** con libSQL: archivo local en desarrollo y **Turso** (SQLite gestionado) en producción.
 - Un **motor de sincronización** en el cliente que reintenta y evita duplicados.
 
 La arquitectura prioriza tres propiedades:
@@ -39,7 +39,7 @@ La arquitectura prioriza tres propiedades:
 | Reintentos seguros | Backoff exponencial y marca de error permanente para rechazos de validación. |
 | PWA instalable | Manifest, iconos 192/512/maskable, `display: standalone`, HTTPS/localhost. |
 | API consistente | Envelope `{ success, data, meta }` y errores `{ success:false, error:{...} }`. |
-| Operación sencilla | SQLite con WAL, migraciones y despliegue en una sola instancia. |
+| Operación sencilla | SQLite/libSQL con migraciones y despliegue en una sola instancia. |
 | Uso académico | Documentación, pruebas automatizadas y trazabilidad de decisiones. |
 
 ### Fuera de alcance
@@ -83,7 +83,7 @@ Estas exclusiones son conscientes y se retoman en la sección 12.
 │  │ /api/...   │  │  HTTP       │  │  negocio    │  │  SQL      │ │
 │  └────────────┘  └─────────────┘  └─────────────┘  └─────┬─────┘ │
 │                                                          ▼       │
-│                                                   SQLite (WAL)   │
+│                                          SQLite local / Turso    │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -173,7 +173,7 @@ Se usan landmarks, `aria-label`, foco visible, textos alternativos y contraste v
 ### 5.1 Capas
 
 ```text
-routes → controllers → services → repositories → SQLite
+routes → controllers → services → repositories → libSQL (local/Turso)
                  ↘ middleware de errores
 ```
 
@@ -276,7 +276,7 @@ CREATE INDEX idx_reports_status       ON reports (status);
 CREATE INDEX idx_reports_service_type ON reports (service_type);
 ```
 
-SQLite se configura con `journal_mode = WAL`, `foreign_keys = ON` y `busy_timeout = 5000`. Las migraciones se aplican una sola vez usando `PRAGMA user_version`.
+En local, el archivo SQLite se configura con `journal_mode = WAL` y `foreign_keys = ON`. En Turso esas opciones las gestiona el servicio. Las migraciones se aplican una sola vez y se registran en la tabla `schema_migrations`, portable entre el archivo local y Turso (no depende de `PRAGMA user_version`).
 
 ---
 
@@ -457,14 +457,15 @@ Usuario
 Frontend estático (Vercel / Netlify)
   │ fetch HTTPS + CORS
   ▼
-API Node (Render / Docker)
-  │ volumen persistente
+API Node (Render Free / Docker)
+  │ libSQL sobre HTTPS
   ▼
-SQLite (/var/data/techservice.sqlite)
+Turso (SQLite gestionado)
 ```
 
 - El frontend es estático: no necesita servidor Node en producción.
-- La API requiere un proceso persistente y un disco para SQLite.
+- La API requiere un proceso persistente. En Render Free el filesystem es efímero, por eso la base vive en Turso y no en un disco local.
+- En desarrollo y en Docker con volumen se usa un archivo SQLite local (`DB_PATH`).
 - El dominio del frontend debe declararse en `CORS_ORIGINS`.
 - La URL de la API se configura con `VITE_API_URL` en build o desde **Ajustes** en tiempo de ejecución.
 
@@ -474,7 +475,9 @@ SQLite (/var/data/techservice.sqlite)
 | --- | --- | --- |
 | `VITE_API_URL` | Frontend (build) | URL base por defecto de la API. |
 | `CORS_ORIGINS` | Backend | Orígenes permitidos. |
-| `DB_PATH` | Backend | Ruta absoluta al archivo SQLite. |
+| `TURSO_DATABASE_URL` | Backend | URL de la base Turso (`libsql://...`). Tiene prioridad sobre `DB_PATH`. |
+| `TURSO_AUTH_TOKEN` | Backend | Token de Turso. Obligatorio si hay URL remota. |
+| `DB_PATH` | Backend | Ruta al archivo SQLite local (desarrollo o Docker con volumen). |
 | `PORT` / `HOST` | Backend | Escucha del servidor. |
 | `NODE_ENV` | Backend | HSTS y comportamiento de producción. |
 
@@ -488,7 +491,7 @@ SQLite (/var/data/techservice.sqlite)
 | Dexie | `localStorage`, SQLite WASM | Índices, consultas reactivas y API robusta sobre IndexedDB. |
 | UUID en cliente | ID autogenerado en servidor | Permite idempotencia y creación offline. |
 | Folio en cliente | Folio sólo del servidor | El reporte necesita identidad legible aun sin red. |
-| SQLite | PostgreSQL, MongoDB | Cero configuración, transacciones y suficiente para una instancia académica. |
+| SQLite / Turso | PostgreSQL, MongoDB | Cero configuración local, transacciones y persistencia gratuita en producción sin cambiar el modelo relacional. |
 | Sync por lotes | Una petición por reporte | Menos round-trips y mejor comportamiento en redes móviles. |
 | Polling de 60 s | WebSockets | Simplicidad; el caso de uso no requiere tiempo real. |
 | Sin autenticación | JWT/OAuth | No formaba parte del alcance; se documenta como riesgo. |

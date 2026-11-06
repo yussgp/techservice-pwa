@@ -15,7 +15,7 @@ La estrategia combina cuatro niveles:
 | Nivel | Herramienta | Qué cubre |
 | --- | --- | --- |
 | Unitarias de frontend | `node:test` | Validación, formato, UUID, catálogos. |
-| Integración de backend | `node:test` + SQLite temporal | Endpoints, idempotencia, validación, CORS, errores. |
+| Integración de backend | `node:test` + libSQL en memoria | Endpoints, idempotencia, validación, CORS, errores. |
 | Build de producción | Vite | Compilación, hashing, inyección de precache. |
 | E2E manual asistido por navegador | Chromium + API real | Alta, sincronización, offline, filtros, detalle, ajustes, borrado. |
 | Auditoría | Lighthouse integrado | Accesibilidad, buenas prácticas y SEO. |
@@ -23,7 +23,7 @@ La estrategia combina cuatro niveles:
 ### Cobertura y límites
 
 - Los tests automatizados **no montan componentes React** (no se usa jsdom/Testing Library). La UI se validó con pruebas E2E en navegador.
-- El backend se prueba contra SQLite temporal, no contra la base de desarrollo.
+- El backend se prueba contra una base libSQL en memoria, no contra la base de desarrollo.
 - Las pruebas E2E se ejecutaron en Chromium de escritorio; no sustituyen una matriz de dispositivos.
 - No se inventaron credenciales, URLs, capturas ni puntuaciones.
 

@@ -351,13 +351,13 @@ Omite la prueba de duplicados en vivo; cita la evidencia documentada.
 | Sincronización | Disparadores, lotes, backoff, reintentos y estados. | `SyncContext`, `syncService`. |
 | Prevención de duplicados | UUID + idempotencia + `duplicate`; evidencia real. | Demo 3.6 y tests. |
 | API REST | 7 endpoints, envelope consistente, validación, errores. | `backend/src`. |
-| Base de datos | SQLite, WAL, migraciones, índices, restricción única de folio. | `backend/src/database`. |
+| Base de datos | SQLite/libSQL, migraciones, índices, restricción única de folio. | `backend/src/database`. |
 | Calidad de código | Separación por capas, funciones pequeñas, nombres claros. | Recorrido de archivos. |
 | Pruebas | 10 backend + 18 frontend + E2E real. | `npm test` y doc 05. |
 | Accesibilidad | Landmarks, foco, contraste, Lighthouse 100. | Ajustes/Lighthouse. |
 | SEO | Metadatos, `robots.txt`, Lighthouse 100. | `index.html`, doc 05. |
 | Documentación | 7 documentos + README + comentarios. | Carpeta `docs/`. |
-| Despliegue | Vercel/Netlify, Render/Docker, variables y disco persistente. | `vercel.json`, `render.yaml`, README. |
+| Despliegue | Vercel/Netlify, Render Free, Turso y variables de entorno. | `vercel.json`, `render.yaml`, README. |
 | Limitaciones declaradas | Sin auth, LWW, SQLite monoinstancia, pendientes físicos. | Sección 8 y doc 05. |
 
 ---
@@ -541,7 +541,7 @@ Una prueba de `normalizeText` falló porque la función no colapsaba espacios in
 
 ### 7.22 “¿Cómo se despliega?”
 
-Frontend estático en Vercel o Netlify con `frontend` como root, `npm run build` y `dist`. Backend en Render o Docker con un disco persistente para SQLite y `CORS_ORIGINS` apuntando al dominio del frontend. La URL de la API se configura con `VITE_API_URL` o desde Ajustes. Los archivos `vercel.json`, `netlify.toml`, `render.yaml` y `Dockerfile` ya están incluidos.
+Frontend estático en Vercel o Netlify con `frontend` como root, `npm run build` y `dist`. Backend en Render Free o Docker; como Render Free no ofrece disco persistente, la base SQLite vive en Turso (libSQL) mediante `TURSO_DATABASE_URL` y `TURSO_AUTH_TOKEN`. `CORS_ORIGINS` apunta al dominio del frontend. La URL de la API se configura con `VITE_API_URL` o desde Ajustes. Los archivos `vercel.json`, `netlify.toml`, `render.yaml` y `Dockerfile` ya están incluidos.
 
 ### 7.23 “¿Por qué SQLite y no un archivo JSON?”
 

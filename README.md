@@ -31,7 +31,7 @@ Aplicación web progresiva (PWA) para registrar y gestionar reportes de servicio
 | Persistencia local | IndexedDB + Dexie 4 + `dexie-react-hooks` |
 | PWA | Manifest, Service Worker propio (sin Workbox), Cache API, Background Sync |
 | API | Node.js 20+, Express 4, CORS, dotenv |
-| Base de datos | SQLite con `better-sqlite3`, WAL y migraciones por `user_version` |
+| Base de datos | SQLite con libSQL (`@libsql/client`): archivo local en desarrollo y Turso en producción |
 | Pruebas | `node:test` en backend y frontend |
 
 ---
@@ -46,7 +46,7 @@ Aplicación web progresiva (PWA) para registrar y gestionar reportes de servicio
 │   │   ├── app.js                    # Composición de Express, CORS y seguridad
 │   │   ├── server.js                 # Arranque y cierre ordenado
 │   │   ├── controllers/              # Adaptación HTTP
-│   │   ├── database/                 # Conexión SQLite, migraciones y repositorio
+│   │   ├── database/                 # Conexión libSQL (local/Turso), migraciones y repositorio
 │   │   ├── middleware/               # Errores, 404 y logs
 │   │   ├── routes/                   # /api/health y /api/reports
 │   │   ├── services/                 # Reglas de negocio, idempotencia y sync
@@ -91,7 +91,7 @@ Aplicación web progresiva (PWA) para registrar y gestionar reportes de servicio
 - Navegador moderno con soporte de Service Worker e IndexedDB.
 - Para instalación PWA: `https://` o `http://localhost`.
 
-> `better-sqlite3` es un módulo nativo. En Windows requiere las herramientas de compilación que npm suele resolver con binarios precompilados; si falla, instala Visual Studio Build Tools con "Desktop development with C++".
+> `@libsql/client` incluye binarios nativos precompilados para las plataformas habituales. Si npm necesitara compilar, en Windows instala Visual Studio Build Tools con "Desktop development with C++".
 
 ---
 
@@ -147,7 +147,7 @@ Abre `http://localhost:4173`. La primera visita registra el Service Worker; reca
 | --- | --- |
 | `npm run dev` | Servidor con recarga (`node --watch`). |
 | `npm start` | Servidor de producción. |
-| `npm test` | 10 pruebas de integración con SQLite temporal. |
+| `npm test` | 10 pruebas de integración con libSQL en memoria. |
 | `npm run check` | Verificación sintáctica del punto de entrada. |
 
 ### Frontend
@@ -272,13 +272,18 @@ El detalle completo está en [`docs/05-pruebas-auditoria.md`](docs/05-pruebas-au
 
 ## 10. Despliegue
 
+Orden recomendado: **GitHub → Render/Turso (backend) → Vercel (frontend) → CORS → verificación**.
+
 ### 10.1 Frontend en Vercel
 
-1. Importa el repositorio en Vercel.
-2. Configura **Root Directory** = `frontend`.
-3. Build Command: `npm run build`; Output Directory: `dist`.
-4. Define `VITE_API_URL=https://tu-api.onrender.com/api`.
-5. Despliega. `vercel.json` ya incluye rewrites de SPA y cabeceras para `sw.js`, manifest y assets.
+1. Despliega primero el backend (10.3) para conocer su URL.
+2. Importa el repositorio en Vercel.
+3. Configura **Root Directory** = `frontend`.
+4. Build Command: `npm run build`; Output Directory: `dist`.
+5. Define `VITE_API_URL=https://tu-api.onrender.com/api` (sin barra final).
+6. Despliega. `vercel.json` ya incluye rewrites de SPA y cabeceras para `sw.js`, manifest y assets.
+
+> `VITE_API_URL` se embebe en el build. Si cambia la URL del backend, hay que redesplegar el frontend.
 
 ### 10.2 Frontend en Netlify
 
@@ -287,15 +292,40 @@ El detalle completo está en [`docs/05-pruebas-auditoria.md`](docs/05-pruebas-au
 3. Define `VITE_API_URL` en *Site settings → Environment variables*.
 4. Despliega; el redirect SPA y las cabeceras están en `netlify.toml`.
 
-### 10.3 Backend en Render
+### 10.3 Backend en Render (plan Free) con Turso
 
-1. Crea un **Web Service** desde el repositorio.
-2. Root Directory: `backend`; Build: `npm ci`; Start: `npm start`.
-3. Añade un **disco persistente** montado en `/var/data` y define `DB_PATH=/var/data/techservice.sqlite`.
-4. Configura `CORS_ORIGINS` con la URL exacta del frontend (sin barra final).
-5. Verifica `https://tu-api.onrender.com/api/health`.
+El plan Free de Render usa un sistema de archivos **efímero** y no permite montar discos persistentes. Por eso la API no guarda SQLite en Render: usa **Turso**, que es SQLite gestionado (libSQL) con plan gratuito sin tarjeta (5 GB y 500 millones de lecturas al mes).
 
-El archivo `backend/render.yaml` resume esta configuración. **Importante:** los sistemas de archivos efímeros (funciones serverless) pierden SQLite en cada despliegue; el disco persistente es obligatorio si se usa SQLite en producción.
+1. Crea una cuenta en [turso.tech](https://turso.tech) y una base de datos.
+2. Obtén las credenciales desde el panel o con la CLI:
+   ```bash
+   turso db create techservice
+   turso db show techservice --url
+   turso db tokens create techservice
+   ```
+3. En Render crea un **Web Service** desde el repositorio.
+4. Root Directory: `backend`; Build: `npm ci`; Start: `npm start`.
+5. Define las variables:
+   ```dotenv
+   NODE_ENV=production
+   NODE_VERSION=22
+   TURSO_DATABASE_URL=libsql://tu-base.turso.io
+   TURSO_AUTH_TOKEN=tu-token
+   APP_VERSION=1.0.0
+   LOG_REQUESTS=true
+   CORS_ORIGINS=https://tu-frontend.vercel.app
+   ```
+6. **No añadas disco ni `DB_PATH`**: no son necesarios y `/var/data` no existe en Free.
+7. Verifica `https://tu-api.onrender.com/api/health`:
+   ```json
+   { "success": true, "data": { "status": "ok", "database": "ok", "databaseEngine": "turso" } }
+   ```
+
+El archivo `backend/render.yaml` refleja esta configuración. Las migraciones se aplican solas al arrancar y se registran en `schema_migrations`, así que sobreviven a los redeploys.
+
+> El plan Free de Render se suspende tras unos minutos de inactividad. La primera petición puede tardar 30–60 s (cold start), pero los datos siguen en Turso.
+
+> Sin `TURSO_DATABASE_URL`, el backend usa `backend/data/techservice.sqlite` (útil en local y en Docker con volumen). Esa ruta **no** es persistente en Render Free.
 
 ### 10.4 Backend con Docker
 
@@ -303,6 +333,16 @@ El archivo `backend/render.yaml` resume esta configuración. **Importante:** los
 cd backend
 docker build -t techservice-api .
 docker run -p 4000:4000 -v techservice-data:/data \
+  -e CORS_ORIGINS=https://tu-frontend.vercel.app \
+  techservice-api
+```
+
+Para usar Turso también en Docker:
+
+```bash
+docker run -p 4000:4000 \
+  -e TURSO_DATABASE_URL=libsql://tu-base.turso.io \
+  -e TURSO_AUTH_TOKEN=tu-token \
   -e CORS_ORIGINS=https://tu-frontend.vercel.app \
   techservice-api
 ```

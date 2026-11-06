@@ -547,7 +547,7 @@ Sí para capturar, consultar y exportar. No para sincronizar ni para comprobar l
 - Reportes y cola: IndexedDB del navegador, base `techservice-db`, store `reports`.
 - URL de API y última sincronización: `localStorage`.
 - Shell y assets: Cache Storage (`techservice-*`).
-- Servidor: SQLite en `DB_PATH` (por defecto `backend/data/techservice.sqlite`).
+- Servidor: Turso (libSQL) si `TURSO_DATABASE_URL` está definido; en local, SQLite en `DB_PATH` (por defecto `backend/data/techservice.sqlite`).
 
 ### ¿Cómo reporto un problema?
 

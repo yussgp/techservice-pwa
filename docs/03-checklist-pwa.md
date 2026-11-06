@@ -169,11 +169,11 @@ Cachés           techservice-config, techservice-shell-<build>, techservice-run
 | --- | --- | --- | --- |
 | 8.1 | CORS restringido | ✅ | Lista explícita; origen no autorizado devuelve 403. |
 | 8.2 | Validación en cliente y servidor | ✅ | `validateReport` y `sanitizeReport`. |
-| 8.3 | SQL parametrizado | ✅ | `better-sqlite3` con placeholders. |
+| 8.3 | SQL parametrizado | ✅ | `@libsql/client` con placeholders con nombre. |
 | 8.4 | Cabeceras de seguridad | ✅ | `nosniff`, `DENY`, `no-referrer`, HSTS en producción. |
 | 8.5 | `sw.js` sin caché HTTP | ✅ | Configurado en `vercel.json` y `netlify.toml`. |
 | 8.6 | Assets con caché inmutable | ✅ | `Cache-Control: public, max-age=31536000, immutable`. |
-| 8.7 | Disco persistente para SQLite | ✅ (documentado) | `render.yaml` y `Dockerfile` usan `/var/data`. |
+| 8.7 | Persistencia en producción | ✅ (documentado) | Turso/libSQL en Render Free; `DB_PATH` solo en local/Docker con volumen. |
 | 8.8 | Autenticación | ❌ | Fuera de alcance; documentado como limitación. |
 
 ---

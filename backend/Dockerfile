@@ -1,5 +1,6 @@
 # Imagen de producción para la API TechService.
-# better-sqlite3 es un módulo nativo: se compila/instala dentro de la imagen.
+# En producción se recomienda Turso (TURSO_DATABASE_URL + TURSO_AUTH_TOKEN).
+# Sin esas variables, la imagen usa SQLite local en /data (volumen opcional).
 FROM node:22-bookworm AS deps
 WORKDIR /app
 COPY package*.json ./

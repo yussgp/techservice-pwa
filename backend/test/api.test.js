@@ -1,7 +1,4 @@
 import crypto from 'node:crypto';
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { createDatabase } from '../src/database/database.js';
@@ -10,7 +7,6 @@ import { createApp } from '../src/app.js';
 let db;
 let server;
 let baseUrl;
-let tempDir;
 
 function sampleReport(overrides = {}) {
   const now = new Date().toISOString();
@@ -47,8 +43,7 @@ async function api(path, options = {}) {
 }
 
 before(async () => {
-  tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'techservice-test-'));
-  db = createDatabase(path.join(tempDir, 'test.sqlite'));
+  db = await createDatabase({ url: ':memory:' });
   const app = createApp({
     db,
     corsOrigins: ['http://localhost:5173'],
@@ -64,8 +59,7 @@ before(async () => {
 
 after(async () => {
   await new Promise((resolve) => server.close(resolve));
-  db.close();
-  fs.rmSync(tempDir, { recursive: true, force: true });
+  await db.close();
 });
 
 test('GET /api/health responde con estado ok', async () => {

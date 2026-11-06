@@ -1,6 +1,10 @@
 /**
  * Repositorio de reportes. Toda la persistencia SQL vive aquí.
  * La API expone camelCase; la base utiliza snake_case.
+ *
+ * El cliente libSQL es asíncrono remotamente (Turso) y localmente. Cada método
+ * acepta un ejecutor opcional (`client` o una transacción) para que el servicio
+ * pueda agrupar operaciones de sincronización en una sola transacción.
  */
 
 function rowToReport(row) {
@@ -35,117 +39,133 @@ const INSERT_SQL = `
     materials, priority, status, notes, created_at, updated_at,
     server_updated_at, synced_at
   ) VALUES (
-    @id, @folio, @technicianName, @clientName, @clientPhone, @location,
-    @serviceType, @equipment, @problemDescription, @diagnosis, @workPerformed,
-    @materials, @priority, @status, @notes, @createdAt, @updatedAt,
-    @serverUpdatedAt, @syncedAt
+    :id, :folio, :technicianName, :clientName, :clientPhone, :location,
+    :serviceType, :equipment, :problemDescription, :diagnosis, :workPerformed,
+    :materials, :priority, :status, :notes, :createdAt, :updatedAt,
+    :serverUpdatedAt, :syncedAt
   )
 `;
 
 const UPDATE_SQL = `
   UPDATE reports SET
-    technician_name = @technicianName,
-    client_name = @clientName,
-    client_phone = @clientPhone,
-    location = @location,
-    service_type = @serviceType,
-    equipment = @equipment,
-    problem_description = @problemDescription,
-    diagnosis = @diagnosis,
-    work_performed = @workPerformed,
-    materials = @materials,
-    priority = @priority,
-    status = @status,
-    notes = @notes,
-    updated_at = @updatedAt,
-    server_updated_at = @serverUpdatedAt
-  WHERE id = @id
+    technician_name = :technicianName,
+    client_name = :clientName,
+    client_phone = :clientPhone,
+    location = :location,
+    service_type = :serviceType,
+    equipment = :equipment,
+    problem_description = :problemDescription,
+    diagnosis = :diagnosis,
+    work_performed = :workPerformed,
+    materials = :materials,
+    priority = :priority,
+    status = :status,
+    notes = :notes,
+    updated_at = :updatedAt,
+    server_updated_at = :serverUpdatedAt
+  WHERE id = :id
 `;
 
 export function createReportRepository(db) {
-  const findByIdStmt = db.prepare('SELECT * FROM reports WHERE id = ?');
-  const findByFolioStmt = db.prepare('SELECT * FROM reports WHERE folio = ?');
-  const insertStmt = db.prepare(INSERT_SQL);
-  const updateStmt = db.prepare(UPDATE_SQL);
-  const deleteStmt = db.prepare('DELETE FROM reports WHERE id = ?');
-  const countStmt = db.prepare('SELECT COUNT(*) AS total FROM reports');
-
   const now = () => new Date().toISOString();
 
-  return {
-    findById(id) {
-      return rowToReport(findByIdStmt.get(id));
-    },
+  async function findById(id, executor = db) {
+    const result = await executor.execute({
+      sql: 'SELECT * FROM reports WHERE id = ?',
+      args: [id]
+    });
+    return rowToReport(result.rows[0]);
+  }
 
-    findByFolio(folio) {
-      return rowToReport(findByFolioStmt.get(folio));
-    },
+  async function findByFolio(folio, executor = db) {
+    const result = await executor.execute({
+      sql: 'SELECT * FROM reports WHERE folio = ?',
+      args: [folio]
+    });
+    return rowToReport(result.rows[0]);
+  }
 
-    insert(report) {
-      const timestamp = now();
-      insertStmt.run({
+  async function insert(report, executor = db) {
+    const timestamp = now();
+    await executor.execute({
+      sql: INSERT_SQL,
+      args: {
         ...report,
         serverUpdatedAt: timestamp,
         syncedAt: timestamp
-      });
-      return rowToReport(findByIdStmt.get(report.id));
-    },
+      }
+    });
+    return findById(report.id, executor);
+  }
 
-    update(report) {
-      updateStmt.run({
+  async function update(report, executor = db) {
+    await executor.execute({
+      sql: UPDATE_SQL,
+      args: {
         ...report,
         serverUpdatedAt: now()
-      });
-      return rowToReport(findByIdStmt.get(report.id));
-    },
-
-    remove(id) {
-      return deleteStmt.run(id).changes > 0;
-    },
-
-    /**
-     * Lista con filtros opcionales. Devuelve items + total (antes de paginar).
-     */
-    list({ search, serviceType, priority, status, limit = 200, offset = 0 } = {}) {
-      const clauses = [];
-      const params = {};
-
-      if (search) {
-        clauses.push(
-          '(folio LIKE @search OR client_name LIKE @search OR technician_name LIKE @search OR equipment LIKE @search)'
-        );
-        params.search = `%${search}%`;
       }
-      if (serviceType) {
-        clauses.push('service_type = @serviceType');
-        params.serviceType = serviceType;
-      }
-      if (priority) {
-        clauses.push('priority = @priority');
-        params.priority = priority;
-      }
-      if (status) {
-        clauses.push('status = @status');
-        params.status = status;
-      }
+    });
+    return findById(report.id, executor);
+  }
 
-      const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
-      const total = db
-        .prepare(`SELECT COUNT(*) AS total FROM reports ${where}`)
-        .get(params).total;
+  async function remove(id, executor = db) {
+    const result = await executor.execute({
+      sql: 'DELETE FROM reports WHERE id = ?',
+      args: [id]
+    });
+    return result.rowsAffected > 0;
+  }
 
-      const items = db
-        .prepare(
-          `SELECT * FROM reports ${where} ORDER BY created_at DESC LIMIT @limit OFFSET @offset`
-        )
-        .all({ ...params, limit, offset })
-        .map(rowToReport);
+  /**
+   * Lista con filtros opcionales. Devuelve items + total (antes de paginar).
+   */
+  async function list(
+    { search, serviceType, priority, status, limit = 200, offset = 0 } = {},
+    executor = db
+  ) {
+    const clauses = [];
+    const params = {};
 
-      return { items, total };
-    },
-
-    count() {
-      return countStmt.get().total;
+    if (search) {
+      clauses.push(
+        '(folio LIKE :search OR client_name LIKE :search OR technician_name LIKE :search OR equipment LIKE :search)'
+      );
+      params.search = `%${search}%`;
     }
-  };
+    if (serviceType) {
+      clauses.push('service_type = :serviceType');
+      params.serviceType = serviceType;
+    }
+    if (priority) {
+      clauses.push('priority = :priority');
+      params.priority = priority;
+    }
+    if (status) {
+      clauses.push('status = :status');
+      params.status = status;
+    }
+
+    const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+
+    const countResult = await executor.execute({
+      sql: `SELECT COUNT(*) AS total FROM reports ${where}`,
+      args: params
+    });
+    const total = Number(countResult.rows[0]?.total ?? 0);
+
+    const itemsResult = await executor.execute({
+      sql: `SELECT * FROM reports ${where} ORDER BY created_at DESC LIMIT :limit OFFSET :offset`,
+      args: { ...params, limit, offset }
+    });
+
+    return { items: itemsResult.rows.map(rowToReport), total };
+  }
+
+  async function count(executor = db) {
+    const result = await executor.execute('SELECT COUNT(*) AS total FROM reports');
+    return Number(result.rows[0]?.total ?? 0);
+  }
+
+  return { findById, findByFolio, insert, update, remove, list, count };
 }

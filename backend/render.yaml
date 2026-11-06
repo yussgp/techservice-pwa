@@ -1,11 +1,17 @@
-# Despliegue de referencia para Render.
-# El disco persistente es obligatorio para no perder SQLite en cada despliegue.
-# Render ofrece discos persistentes en planes de pago; ajusta "plan" a tu cuenta.
+# Despliegue de referencia para Render (plan Free).
+#
+# SQLite local no sobrevive a los reinicios del plan Free porque su disco es
+# efímero. Por eso la base de datos vive en Turso (libSQL), que es SQLite
+# gestionado y tiene un plan gratuito sin tarjeta.
+#
+# Crea la base en https://turso.tech y define en Render:
+#   TURSO_DATABASE_URL=libsql://<tu-base>.turso.io
+#   TURSO_AUTH_TOKEN=<token>
 services:
   - type: web
     name: techservice-api
     runtime: node
-    plan: starter
+    plan: free
     rootDir: backend
     buildCommand: npm ci
     startCommand: npm start
@@ -14,16 +20,18 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
-      - key: DB_PATH
-        value: /var/data/techservice.sqlite
+      # Evita que Render elija una versión de Node demasiado nueva.
+      - key: NODE_VERSION
+        value: "22"
       - key: APP_VERSION
         value: 1.0.0
       - key: LOG_REQUESTS
         value: "true"
-      # Se configura en el panel de Render con la URL exacta del frontend.
+      # Se configuran en el panel de Render, nunca en el repositorio.
+      - key: TURSO_DATABASE_URL
+        sync: false
+      - key: TURSO_AUTH_TOKEN
+        sync: false
+      # URL exacta del frontend en Vercel, sin barra final.
       - key: CORS_ORIGINS
         sync: false
-    disk:
-      name: techservice-data
-      mountPath: /var/data
-      sizeGB: 1

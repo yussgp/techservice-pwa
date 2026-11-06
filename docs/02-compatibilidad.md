@@ -186,7 +186,7 @@ Pendiente: validación visual y táctil en dispositivos reales, incluyendo rotac
 | `beforeinstallprompt` no estándar | No se puede forzar el diálogo de instalación. | Botón condicional + instrucciones. |
 | HTTP en red local | Sin Service Worker. | HTTPS, túnel o despliegue. |
 | Sin autenticación | Cualquiera con la URL puede acceder. | Fuera de alcance; documentado como riesgo. |
-| SQLite en serverless | Pérdida de datos entre despliegues. | Disco persistente o PostgreSQL. |
+| SQLite en filesystem efímero | Pérdida de datos entre despliegues. | Turso (libSQL) o disco persistente. |
 | Navegadores antiguos | Sin SW/IndexedDB modernos. | La app muestra errores controlados; no se soportan versiones obsoletas. |
 
 ---
